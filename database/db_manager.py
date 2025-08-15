@@ -26,6 +26,23 @@ class DatabaseManager:
         if self.conn:
             self.conn.close()
             
+    def execute(self, query, params=None):
+        """Execute a SQL query and return cursor (for compatibility)"""
+        # Always ensure we have a fresh connection
+        self.connect()
+        
+        if params:
+            result = self.cursor.execute(query, params)
+        else:
+            result = self.cursor.execute(query)
+            
+        return result
+        
+    def commit(self):
+        """Commit current transaction"""
+        if self.conn:
+            self.conn.commit()
+            
     def initialize_database(self):
         """Create all necessary tables"""
         self.connect()
