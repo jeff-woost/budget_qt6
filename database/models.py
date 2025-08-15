@@ -54,12 +54,12 @@ class ExpenseModel:
     """Model for expense operations"""
     
     @staticmethod
-    def add(db, date_str, person, amount, category, subcategory, description, payment_method):
+    def add(db, date_str, person, amount, category, subcategory, description, payment_method, realized=False):
         """Add expense entry"""
         db.execute('''
-            INSERT INTO expenses (date, person, amount, category, subcategory, description, payment_method)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (date_str, person, amount, category, subcategory, description, payment_method))
+            INSERT INTO expenses (date, person, amount, category, subcategory, description, payment_method, realized)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (date_str, person, amount, category, subcategory, description, payment_method, realized))
         db.commit()
         
     @staticmethod
@@ -100,7 +100,38 @@ class ExpenseModel:
             GROUP BY category, subcategory
             ORDER BY category, subcategory
         ''', (month_start, month_end)).fetchall()
-        
+
+    @staticmethod
+    def get_unrealized_by_person(db, month_start, month_end):
+        """Get unrealized expenses by person for a specific month"""
+        return db.execute('''
+            SELECT person, COALESCE(SUM(amount), 0) as total
+            FROM expenses
+            WHERE date >= ? AND date <= ? AND realized = 0
+            GROUP BY person
+        ''', (month_start, month_end)).fetchall()
+
+    @staticmethod
+    def get_unrealized_expenses(db, month_start, month_end):
+        """Get all unrealized expenses for a specific month"""
+        return db.execute('''
+            SELECT * FROM expenses
+            WHERE date >= ? AND date <= ? AND realized = 0
+            ORDER BY person, date DESC
+        ''', (month_start, month_end)).fetchall()
+
+    @staticmethod
+    def mark_as_realized(db, expense_id):
+        """Mark an expense as realized"""
+        db.execute('UPDATE expenses SET realized = 1 WHERE id = ?', (expense_id,))
+        db.commit()
+
+    @staticmethod
+    def mark_as_unrealized(db, expense_id):
+        """Mark an expense as unrealized"""
+        db.execute('UPDATE expenses SET realized = 0 WHERE id = ?', (expense_id,))
+        db.commit()
+
     @staticmethod
     def delete(db, expense_id):
         """Delete expense entry"""

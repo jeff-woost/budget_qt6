@@ -5,9 +5,9 @@ Budget Tab - Manages income and expenses with two sub-tabs
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QGroupBox, QGridLayout,
-    QComboBox, QLineEdit, QDateEdit, QTextEdit, QTabWidget,
+    QComboBox, QLineEdit, QDateEdit, QTabWidget,
     QHeaderView, QMessageBox, QFileDialog, QDialog,
-    QDialogButtonBox, QCheckBox, QSpinBox, QDoubleSpinBox
+    QDialogButtonBox, QCheckBox
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
@@ -15,6 +15,7 @@ from datetime import datetime
 import csv
 import os
 from database.db_manager import DatabaseManager
+from gui.utils.expense_loader import ExpenseLoader
 
 class BudgetTab(QWidget):
     def __init__(self):
@@ -256,9 +257,55 @@ class IncomeSubTab(QWidget):
             
     def delete_selected_income(self):
         """Delete selected income entries"""
-        # This would need implementation in the database manager
-        QMessageBox.information(self, "Info", "Delete functionality to be implemented")
-        
+        selected_rows = []
+        for row in range(self.income_table.rowCount()):
+            if self.income_table.item(row, 0) and self.income_table.item(row, 0).isSelected():
+                selected_rows.append(row)
+            elif any(self.income_table.item(row, col) and self.income_table.item(row, col).isSelected()
+                    for col in range(self.income_table.columnCount())):
+                selected_rows.append(row)
+
+        if not selected_rows:
+            QMessageBox.warning(self, "Warning", "Please select one or more income entries to delete.")
+            return
+
+        # Confirm deletion
+        reply = QMessageBox.question(
+            self,
+            "Confirm Deletion",
+            f"Are you sure you want to delete {len(selected_rows)} income entr{'y' if len(selected_rows) == 1 else 'ies'}?\n\nThis action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            # Delete each selected income entry
+            deleted_count = 0
+            for row in reversed(selected_rows):  # Reverse to maintain row indices
+                income_id_item = self.income_table.item(row, 4)  # ID is in column 4
+                if income_id_item:
+                    income_id = int(income_id_item.text())
+
+                    # Delete from database using the model's delete method
+                    from database.models import IncomeModel
+                    IncomeModel.delete(self.db, income_id)
+                    deleted_count += 1
+
+            # Refresh the table
+            self.refresh_data()
+
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Successfully deleted {deleted_count} income entr{'y' if deleted_count == 1 else 'ies'}."
+            )
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to delete income entries: {str(e)}")
+
     def refresh_data(self):
         """Refresh the income data display"""
         try:
@@ -369,8 +416,13 @@ class ExpensesSubTab(QWidget):
         form_layout.addWidget(QLabel("Description:"), 2, 0)
         self.description_input = QLineEdit()
         self.description_input.setPlaceholderText("Optional description")
-        form_layout.addWidget(self.description_input, 2, 1, 1, 5)
-        
+        form_layout.addWidget(self.description_input, 2, 1, 1, 4)
+
+        # Add realized checkbox
+        self.realized_checkbox = QCheckBox("Already taken from joint checking")
+        self.realized_checkbox.setToolTip("Check if this expense has already been paid from the joint checking account")
+        form_layout.addWidget(self.realized_checkbox, 2, 5)
+
         # Row 4 - Buttons
         button_layout = QHBoxLayout()
         
@@ -574,7 +626,8 @@ class ExpensesSubTab(QWidget):
             subcategory = self.subcategory_combo.currentText()
             description = self.description_input.text().strip()
             payment_method = self.payment_combo.currentText()
-            
+            realized = self.realized_checkbox.isChecked()  # Get realized status
+
             # Validate inputs
             if not amount_text:
                 QMessageBox.warning(self, "Warning", "Please enter an amount")
@@ -590,14 +643,16 @@ class ExpensesSubTab(QWidget):
                 QMessageBox.warning(self, "Warning", "Please enter a valid number for amount")
                 return
             
-            # Add to database
-            self.db.add_expense(person, amount, date, category, subcategory, 
-                              description, payment_method)
-            
+            # Add to database using the updated ExpenseModel.add method
+            from database.models import ExpenseModel
+            ExpenseModel.add(self.db, date, person, amount, category, subcategory,
+                           description, payment_method, realized)
+
             # Clear form
             self.amount_input.clear()
             self.description_input.clear()
-            
+            self.realized_checkbox.setChecked(False)  # Reset checkbox
+
             # Refresh display
             self.refresh_data()
             
@@ -607,7 +662,7 @@ class ExpensesSubTab(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to add expense: {str(e)}")
             
     def import_expenses(self):
-        """Import expenses from CSV or TXT file"""
+        """Import expenses from CSV or TXT file using ExpenseLoader"""
         try:
             file_path, _ = QFileDialog.getOpenFileName(
                 self, 
@@ -619,18 +674,66 @@ class ExpensesSubTab(QWidget):
             if not file_path:
                 return
             
-            # Create import dialog
-            dialog = ImportDialog(file_path, self.categories_data)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                expenses = dialog.get_parsed_expenses()
-                
-                if expenses:
-                    self.db.bulk_add_expenses(expenses)
+            # Use ExpenseLoader to parse the file
+            loader = ExpenseLoader()
+            expenses = []
+            errors = []
+
+            if file_path.lower().endswith('.csv'):
+                expenses, errors = loader.load_csv_file(file_path)
+            elif file_path.lower().endswith('.txt'):
+                expenses, errors = loader.load_txt_file(file_path)
+            else:
+                # Try CSV first, then TXT
+                expenses, errors = loader.load_csv_file(file_path)
+                if not expenses and not errors:
+                    expenses, errors = loader.load_txt_file(file_path)
+
+            # Show errors if any
+            if errors:
+                error_dialog = QMessageBox()
+                error_dialog.setWindowTitle("Import Warnings")
+                error_dialog.setIcon(QMessageBox.Icon.Warning)
+                error_dialog.setText(f"Found {len(errors)} issues while parsing the file:")
+                error_dialog.setDetailedText("\n".join(errors))
+                error_dialog.exec()
+
+            if not expenses:
+                QMessageBox.warning(self, "Warning", "No valid expenses found in the file")
+                return
+
+            # Validate expenses
+            valid_expenses, validation_errors = loader.validate_expenses(expenses)
+
+            if validation_errors:
+                error_dialog = QMessageBox()
+                error_dialog.setWindowTitle("Validation Errors")
+                error_dialog.setIcon(QMessageBox.Icon.Warning)
+                error_dialog.setText(f"Found {len(validation_errors)} validation issues:")
+                error_dialog.setDetailedText("\n".join(validation_errors))
+                error_dialog.exec()
+
+            if not valid_expenses:
+                QMessageBox.warning(self, "Warning", "No valid expenses after validation")
+                return
+
+            # Show preview dialog
+            preview_dialog = ExpensePreviewDialog(valid_expenses, self.categories_data)
+            if preview_dialog.exec() == QDialog.DialogCode.Accepted:
+                final_expenses = preview_dialog.get_final_expenses()
+
+                if final_expenses:
+                    # Add to database
+                    self.db.bulk_add_expenses(final_expenses)
                     self.refresh_data()
+
                     QMessageBox.information(
                         self, 
                         "Success", 
-                        f"Successfully imported {len(expenses)} expenses!"
+                        f"Successfully imported {len(final_expenses)} expenses!\n\n"
+                        f"Parsing errors: {len(errors)}\n"
+                        f"Validation errors: {len(validation_errors)}\n"
+                        f"Successfully imported: {len(final_expenses)}"
                     )
                     
         except Exception as e:
@@ -694,9 +797,55 @@ class ExpensesSubTab(QWidget):
             
     def delete_selected_expenses(self):
         """Delete selected expense entries"""
-        # This would need implementation in the database manager
-        QMessageBox.information(self, "Info", "Delete functionality to be implemented")
-        
+        selected_rows = []
+        for row in range(self.expense_table.rowCount()):
+            if self.expense_table.item(row, 0) and self.expense_table.item(row, 0).isSelected():
+                selected_rows.append(row)
+            elif any(self.expense_table.item(row, col) and self.expense_table.item(row, col).isSelected()
+                    for col in range(self.expense_table.columnCount())):
+                selected_rows.append(row)
+
+        if not selected_rows:
+            QMessageBox.warning(self, "Warning", "Please select one or more expense entries to delete.")
+            return
+
+        # Confirm deletion
+        reply = QMessageBox.question(
+            self,
+            "Confirm Deletion",
+            f"Are you sure you want to delete {len(selected_rows)} expense entr{'y' if len(selected_rows) == 1 else 'ies'}?\n\nThis action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            # Delete each selected expense entry
+            deleted_count = 0
+            for row in reversed(selected_rows):  # Reverse to maintain row indices
+                expense_id_item = self.expense_table.item(row, 7)  # ID is in column 7
+                if expense_id_item:
+                    expense_id = int(expense_id_item.text())
+
+                    # Delete from database using the model's delete method
+                    from database.models import ExpenseModel
+                    ExpenseModel.delete(self.db, expense_id)
+                    deleted_count += 1
+
+            # Refresh the table
+            self.refresh_data()
+
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Successfully deleted {deleted_count} expense entr{'y' if deleted_count == 1 else 'ies'}."
+            )
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to delete expense entries: {str(e)}")
+
     def refresh_data(self):
         """Refresh the expense data display"""
         try:
@@ -1017,3 +1166,256 @@ class ImportDialog(QDialog):
     def get_parsed_expenses(self):
         """Return the parsed expenses"""
         return self.parsed_expenses
+
+
+class ExpensePreviewDialog(QDialog):
+    """Dialog for previewing expenses before import"""
+
+    def __init__(self, expenses, categories_data):
+        super().__init__()
+        self.expenses = expenses
+        self.categories_data = categories_data
+        self.final_expenses = []
+
+        self.setWindowTitle("Preview Expenses")
+        self.setModal(True)
+        self.setMinimumSize(800, 600)
+
+        self.init_ui()
+        self.populate_preview()
+
+    def init_ui(self):
+        """Initialize the preview dialog UI"""
+        layout = QVBoxLayout()
+
+        # Instructions
+        instructions = QLabel(
+            "Review the expenses below. You can edit the values, select rows and delete them, "
+            "or remove any expense that you do not want to import."
+        )
+        instructions.setWordWrap(True)
+        layout.addWidget(instructions)
+
+        # Preview table
+        self.preview_table = QTableWidget()
+        self.preview_table.setColumnCount(7)
+        self.preview_table.setHorizontalHeaderLabels([
+            "Date", "Person", "Amount", "Category", "Subcategory", "Description", "Payment Method"
+        ])
+
+        # Enable row selection
+        self.preview_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.preview_table.setSelectionMode(QTableWidget.SelectionMode.MultiSelection)
+
+        # Set column widths
+        header = self.preview_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+
+        layout.addWidget(self.preview_table)
+
+        # Action buttons layout
+        action_layout = QHBoxLayout()
+
+        # Delete selected button
+        delete_btn = QPushButton("Delete Selected")
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #d9534f;
+                color: white;
+                padding: 8px;
+                font-weight: bold;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #c9302c;
+            }
+        """)
+        delete_btn.clicked.connect(self.delete_selected_rows)
+        action_layout.addWidget(delete_btn)
+
+        action_layout.addStretch()
+
+        # Row count label
+        self.row_count_label = QLabel()
+        self.update_row_count()
+        action_layout.addWidget(self.row_count_label)
+
+        layout.addLayout(action_layout)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+
+        ok_btn = QPushButton("Import All")
+        ok_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #5cb85c;
+                color: white;
+                padding: 8px;
+                font-weight: bold;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #449d44;
+            }
+        """)
+        ok_btn.clicked.connect(self.import_all)
+        button_layout.addWidget(ok_btn)
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+
+    def delete_selected_rows(self):
+        """Delete selected rows from the preview table"""
+        try:
+            # Get selected rows
+            selected_rows = set()
+            for item in self.preview_table.selectedItems():
+                selected_rows.add(item.row())
+
+            if not selected_rows:
+                QMessageBox.information(self, "Info", "Please select one or more rows to delete.")
+                return
+
+            # Confirm deletion
+            count = len(selected_rows)
+            reply = QMessageBox.question(
+                self,
+                "Confirm Delete",
+                f"Are you sure you want to delete {count} selected expense{'s' if count != 1 else ''}?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # Delete rows in reverse order to maintain row indices
+            for row in sorted(selected_rows, reverse=True):
+                self.preview_table.removeRow(row)
+
+            # Update row count display
+            self.update_row_count()
+
+            QMessageBox.information(self, "Success", f"Deleted {count} expense{'s' if count != 1 else ''}.")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to delete rows: {str(e)}")
+
+    def update_row_count(self):
+        """Update the row count label"""
+        count = self.preview_table.rowCount()
+        self.row_count_label.setText(f"Total expenses: {count}")
+
+    def populate_preview(self):
+        """Populate the preview table with expense data and editable subcategory dropdowns"""
+        self.preview_table.setRowCount(len(self.expenses))
+
+        for i, expense in enumerate(self.expenses):
+            # Standard text items for non-editable columns
+            self.preview_table.setItem(i, 0, QTableWidgetItem(expense['date']))
+            self.preview_table.setItem(i, 1, QTableWidgetItem(expense['person']))
+            self.preview_table.setItem(i, 2, QTableWidgetItem(f"${expense['amount']:,.2f}"))
+
+            # Category dropdown
+            category_combo = QComboBox()
+            category_combo.addItems(sorted(self.categories_data.keys()))
+            category_combo.setCurrentText(expense['category'])
+            category_combo.currentTextChanged.connect(lambda text, row=i: self.on_category_changed_in_table(row, text))
+            self.preview_table.setCellWidget(i, 3, category_combo)
+
+            # Subcategory dropdown
+            subcategory_combo = QComboBox()
+            category = expense['category']
+            if category in self.categories_data:
+                subcategory_combo.addItems(self.categories_data[category])
+                if expense['subcategory'] in self.categories_data[category]:
+                    subcategory_combo.setCurrentText(expense['subcategory'])
+                else:
+                    # If subcategory doesn't exist, show it as blank and add it as an option
+                    subcategory_combo.addItem(expense['subcategory'])
+                    subcategory_combo.setCurrentText(expense['subcategory'])
+            else:
+                # If category doesn't exist, add the subcategory as is
+                subcategory_combo.addItem(expense['subcategory'])
+                subcategory_combo.setCurrentText(expense['subcategory'])
+
+            self.preview_table.setCellWidget(i, 4, subcategory_combo)
+
+            # Regular text items for description and payment method
+            self.preview_table.setItem(i, 5, QTableWidgetItem(expense.get('description', '')))
+            self.preview_table.setItem(i, 6, QTableWidgetItem(expense.get('payment_method', '')))
+
+        # Update row count display
+        self.update_row_count()
+
+    def on_category_changed_in_table(self, row, category):
+        """Update subcategory dropdown when category changes in the preview table"""
+        subcategory_combo = self.preview_table.cellWidget(row, 4)
+        if subcategory_combo:
+            subcategory_combo.clear()
+            if category in self.categories_data:
+                subcategory_combo.addItems(self.categories_data[category])
+            else:
+                subcategory_combo.addItem("Other")
+
+    def import_all(self):
+        """Import all remaining displayed expenses"""
+        try:
+            # Check if there are any rows left
+            if self.preview_table.rowCount() == 0:
+                QMessageBox.warning(self, "Warning", "No expenses to import.")
+                return
+
+            # Collect final expenses from remaining rows
+            for i in range(self.preview_table.rowCount()):
+                try:
+                    date = self.preview_table.item(i, 0).text()
+                    person = self.preview_table.item(i, 1).text()
+                    amount_text = self.preview_table.item(i, 2).text().replace("$", "").replace(",", "")
+
+                    # Get values from dropdown widgets
+                    category_combo = self.preview_table.cellWidget(i, 3)
+                    subcategory_combo = self.preview_table.cellWidget(i, 4)
+
+                    category = category_combo.currentText() if category_combo else "Other"
+                    subcategory = subcategory_combo.currentText() if subcategory_combo else "Other"
+
+                    description = self.preview_table.item(i, 5).text()
+                    payment_method = self.preview_table.item(i, 6).text()
+
+                    amount = abs(float(amount_text))  # Ensure positive amount
+
+                    expense = {
+                        'date': date,
+                        'person': person,
+                        'amount': amount,
+                        'category': category,
+                        'subcategory': subcategory,
+                        'description': description,
+                        'payment_method': payment_method
+                    }
+
+                    self.final_expenses.append(expense)
+
+                except Exception as e:
+                    print(f"Error processing row {i}: {e}")
+                    continue
+
+            self.accept()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to import expenses: {str(e)}")
+
+    def get_final_expenses(self):
+        """Return the final expenses list"""
+        return self.final_expenses

@@ -60,7 +60,7 @@ class NetWorthTab(QWidget):
         self.asset_type_combo = QComboBox()
         self.asset_type_combo.addItems([
             "Real Estate", "Checking Account", "Savings Account",
-            "Brokerage Account", "401(k)", "Roth IRA", "Traditional IRA",
+            "Brokerage Account", "401(k)","Roth 401(k)", "Roth IRA", "Traditional IRA",
             "HSA", "529 Plan", "Cryptocurrency", "Precious Metals",
             "Vehicle", "Other Asset", "Debt/Liability"
         ])

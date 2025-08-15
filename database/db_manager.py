@@ -80,10 +80,19 @@ class DatabaseManager:
                 subcategory TEXT NOT NULL,
                 description TEXT,
                 payment_method TEXT,
+                realized BOOLEAN DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
+        # Add realized column to existing expenses table if it doesn't exist
+        try:
+            self.cursor.execute('ALTER TABLE expenses ADD COLUMN realized BOOLEAN DEFAULT 0')
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+
         # Net worth assets table
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS net_worth_assets (

@@ -1,6 +1,6 @@
 """
 Monthly Presentation Tab
-Shows monthly spending breakdown by category
+Shows monthly spending breakdown by category and unrealized expenses tracking
 """
 
 from PyQt6.QtWidgets import *
@@ -11,8 +11,8 @@ from PyQt6.QtCharts import *
 from database.models import IncomeModel, ExpenseModel
 
 class PresentationTab(QWidget):
-    """Monthly presentation tab"""
-    
+    """Monthly presentation tab with subtabs"""
+
     def __init__(self, db):
         super().__init__()
         self.db = db
@@ -20,7 +20,7 @@ class PresentationTab(QWidget):
         self.refresh_data()
         
     def setup_ui(self):
-        """Set up the UI"""
+        """Set up the UI with tab widget"""
         layout = QVBoxLayout(self)
         
         # Title
@@ -28,7 +28,7 @@ class PresentationTab(QWidget):
         title.setStyleSheet("font-size: 24px; font-weight: bold; color: #333;")
         layout.addWidget(title)
         
-        # Month selector
+        # Month selector (shared across all tabs)
         month_layout = QHBoxLayout()
         month_layout.addWidget(QLabel("Select Month:"))
         self.month_selector = QDateEdit()
@@ -40,6 +40,25 @@ class PresentationTab(QWidget):
         month_layout.addStretch()
         layout.addLayout(month_layout)
         
+        # Create tab widget
+        self.tab_widget = QTabWidget()
+
+        # Overview tab (existing functionality)
+        overview_tab = QWidget()
+        self.setup_overview_tab(overview_tab)
+        self.tab_widget.addTab(overview_tab, "Overview")
+
+        # Unrealized expenses tab (new functionality)
+        unrealized_tab = QWidget()
+        self.setup_unrealized_tab(unrealized_tab)
+        self.tab_widget.addTab(unrealized_tab, "Unrealized Expenses")
+
+        layout.addWidget(self.tab_widget)
+
+    def setup_overview_tab(self, tab):
+        """Set up the overview tab with existing functionality"""
+        layout = QVBoxLayout(tab)
+
         # Summary section
         summary_layout = QHBoxLayout()
         
@@ -85,8 +104,53 @@ class PresentationTab(QWidget):
         self.chart_view.setMinimumHeight(300)
         layout.addWidget(self.chart_view)
         
+    def setup_unrealized_tab(self, tab):
+        """Set up the unrealized expenses tab"""
+        layout = QVBoxLayout(tab)
+
+        # Instructions
+        instructions = QLabel("This shows expenses that haven't been taken out of the joint checking account yet.")
+        instructions.setWordWrap(True)
+        instructions.setStyleSheet("color: #666; margin-bottom: 10px;")
+        layout.addWidget(instructions)
+
+        # Summary section for unrealized expenses
+        summary_layout = QHBoxLayout()
+
+        # Unrealized expenses summary
+        unrealized_group = QGroupBox("Unrealized Expenses to Withdraw")
+        unrealized_layout = QVBoxLayout()
+        self.jeff_unrealized_label = QLabel("Jeff: $0.00")
+        self.vanessa_unrealized_label = QLabel("Vanessa: $0.00")
+        self.total_unrealized_label = QLabel("Total to Withdraw: $0.00")
+        self.total_unrealized_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #d32f2f;")
+        unrealized_layout.addWidget(self.jeff_unrealized_label)
+        unrealized_layout.addWidget(self.vanessa_unrealized_label)
+        unrealized_layout.addWidget(QLabel(""))  # Spacer
+        unrealized_layout.addWidget(self.total_unrealized_label)
+        unrealized_group.setLayout(unrealized_layout)
+        summary_layout.addWidget(unrealized_group)
+        summary_layout.addStretch()
+
+        layout.addLayout(summary_layout)
+
+        # Unrealized expenses table
+        self.unrealized_table = QTableWidget()
+        self.unrealized_table.setColumnCount(7)
+        self.unrealized_table.setHorizontalHeaderLabels([
+            "Date", "Person", "Amount", "Category", "Subcategory", "Description", "Actions"
+        ])
+        self.unrealized_table.horizontalHeader().setStretchLastSection(True)
+        self.unrealized_table.setAlternatingRowColors(True)
+        layout.addWidget(self.unrealized_table)
+
     def refresh_data(self):
-        """Refresh presentation data"""
+        """Refresh presentation data for all tabs"""
+        self.refresh_overview_data()
+        self.refresh_unrealized_data()
+
+    def refresh_overview_data(self):
+        """Refresh data for the overview tab"""
         # Get selected month range
         selected_date = self.month_selector.date()
         month_start = selected_date.toString("yyyy-MM-01")
@@ -147,30 +211,75 @@ class PresentationTab(QWidget):
         # Update chart
         self.update_spending_chart(month_start, month_end)
         
+    def refresh_unrealized_data(self):
+        """Refresh data for the unrealized expenses tab"""
+        # Get selected month range
+        selected_date = self.month_selector.date()
+        month_start = selected_date.toString("yyyy-MM-01")
+        month_end = selected_date.addMonths(1).addDays(-1).toString("yyyy-MM-dd")
+
+        # Get unrealized expenses by person
+        unrealized_by_person = ExpenseModel.get_unrealized_by_person(self.db, month_start, month_end)
+        unrealized_dict = {row['person']: row['total'] for row in unrealized_by_person}
+
+        jeff_unrealized = unrealized_dict.get('Jeff', 0)
+        vanessa_unrealized = unrealized_dict.get('Vanessa', 0)
+        total_unrealized = jeff_unrealized + vanessa_unrealized
+
+        self.jeff_unrealized_label.setText(f"Jeff: ${jeff_unrealized:,.2f}")
+        self.vanessa_unrealized_label.setText(f"Vanessa: ${vanessa_unrealized:,.2f}")
+        self.total_unrealized_label.setText(f"Total to Withdraw: ${total_unrealized:,.2f}")
+
+        # Get all unrealized expenses
+        unrealized_expenses = ExpenseModel.get_unrealized_expenses(self.db, month_start, month_end)
+
+        self.unrealized_table.setRowCount(len(unrealized_expenses))
+        for i, expense in enumerate(unrealized_expenses):
+            self.unrealized_table.setItem(i, 0, QTableWidgetItem(expense['date']))
+            self.unrealized_table.setItem(i, 1, QTableWidgetItem(expense['person']))
+            self.unrealized_table.setItem(i, 2, QTableWidgetItem(f"${expense['amount']:.2f}"))
+            self.unrealized_table.setItem(i, 3, QTableWidgetItem(expense['category']))
+            self.unrealized_table.setItem(i, 4, QTableWidgetItem(expense['subcategory'] or ""))
+            self.unrealized_table.setItem(i, 5, QTableWidgetItem(expense['description'] or ""))
+
+            # Add "Mark as Realized" button
+            mark_button = QPushButton("Mark as Realized")
+            mark_button.clicked.connect(lambda checked, exp_id=expense['id']: self.mark_expense_realized(exp_id))
+            mark_button.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; border: none; padding: 5px; }")
+            self.unrealized_table.setCellWidget(i, 6, mark_button)
+
+    def mark_expense_realized(self, expense_id):
+        """Mark an expense as realized and refresh the data"""
+        ExpenseModel.mark_as_realized(self.db, expense_id)
+        self.refresh_unrealized_data()
+
+        # Show confirmation message
+        QMessageBox.information(self, "Success", "Expense marked as realized!")
+
     def update_spending_chart(self, month_start, month_end):
-        """Update spending pie chart"""
-        cursor = self.db.execute('''
-            SELECT category, SUM(amount) as total
-            FROM expenses
-            WHERE date >= ? AND date <= ?
-            GROUP BY category
-            ORDER BY total DESC
-            LIMIT 10
-        ''', (month_start, month_end))
-        
-        categories = cursor.fetchall()
-        
-        if categories:
-            series = QPieSeries()
-            
-            for cat in categories:
-                slice = series.append(cat['category'], cat['total'])
-                slice.setLabelVisible(True)
-                slice.setLabel(f"{cat['category']}: ${cat['total']:.0f}")
-            
-            chart = QChart()
-            chart.addSeries(series)
-            chart.setTitle("Spending by Category")
-            chart.legend().setAlignment(Qt.AlignmentFlag.AlignRight)
-            
-            self.chart_view.setChart(chart)
+        """Update spending pie chart for overview tab"""
+        # Get category data
+        categories = ExpenseModel.get_by_category(self.db, month_start, month_end)
+
+        if not categories:
+            # Clear chart if no data
+            self.chart_view.setChart(QChart())
+            return
+
+        # Create pie series
+        series = QPieSeries()
+
+        for cat in categories:
+            slice_label = f"{cat['category']}"
+            if cat['subcategory']:
+                slice_label += f" - {cat['subcategory']}"
+            series.append(slice_label, cat['total'])
+
+        # Create chart
+        chart = QChart()
+        chart.addSeries(series)
+        chart.setTitle("Monthly Spending by Category")
+        chart.legend().setVisible(True)
+        chart.legend().setAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.chart_view.setChart(chart)
