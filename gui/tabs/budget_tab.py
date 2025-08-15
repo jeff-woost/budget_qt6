@@ -717,10 +717,16 @@ class ExpensesSubTab(QWidget):
                 QMessageBox.warning(self, "Warning", "No valid expenses after validation")
                 return
 
-            # Show preview dialog
-            preview_dialog = ExpensePreviewDialog(valid_expenses, self.categories_data)
+            # Use the new BulkImportPreviewDialog with proper category handling
+            from gui.utils.bulk_import_dialog import BulkImportPreviewDialog
+
+            # Get categories from the loader to ensure they match
+            loader_categories = loader.get_available_categories()
+
+            # Show preview dialog with loader categories
+            preview_dialog = BulkImportPreviewDialog(valid_expenses, loader_categories, self)
             if preview_dialog.exec() == QDialog.DialogCode.Accepted:
-                final_expenses = preview_dialog.get_final_expenses()
+                final_expenses = preview_dialog.get_selected_expenses()
 
                 if final_expenses:
                     # Add to database
@@ -738,7 +744,8 @@ class ExpensesSubTab(QWidget):
                     
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to import expenses: {str(e)}")
-            
+            print(f"Import error details: {e}")  # For debugging
+
     def export_expenses(self):
         """Export expenses to CSV file"""
         try:
