@@ -15,6 +15,7 @@ class OverviewTab(QWidget):
     def __init__(self):
         super().__init__()
         self.db = DatabaseManager()
+        self.labels = {}  # Initialize labels dictionary
         self.init_ui()
         self.refresh_data()
         
@@ -144,7 +145,6 @@ class OverviewTab(QWidget):
         
         layout = QGridLayout()
         
-        self.labels = {}
         for i, (label_text, value_text) in enumerate(items):
             label = QLabel(label_text)
             label.setStyleSheet("font-weight: normal;")
@@ -155,7 +155,7 @@ class OverviewTab(QWidget):
             layout.addWidget(label, i, 0)
             layout.addWidget(value, i, 1)
             
-            # Store reference to value labels for updating
+            # Store reference to value labels for updating with consistent key format
             key = f"{title}_{label_text}"
             self.labels[key] = value
             
@@ -171,42 +171,42 @@ class OverviewTab(QWidget):
             # Get monthly summary from database
             summary = self.db.get_monthly_summary(year, month)
             
-            # Update Income Card
+            # Update Income Card - use safe label access
             jeff_income = summary['income'].get('Jeff', 0)
             vanessa_income = summary['income'].get('Vanessa', 0)
             total_income = jeff_income + vanessa_income
             
-            self.labels["💵 Income_Jeff's Income:"].setText(f"${jeff_income:,.2f}")
-            self.labels["💵 Income_Vanessa's Income:"].setText(f"${vanessa_income:,.2f}")
-            self.labels["💵 Income_Total Income:"].setText(f"${total_income:,.2f}")
-            
+            self._update_label("💵 Income", "Jeff's Income:", f"${jeff_income:,.2f}")
+            self._update_label("💵 Income", "Vanessa's Income:", f"${vanessa_income:,.2f}")
+            self._update_label("💵 Income", "Total Income:", f"${total_income:,.2f}")
+
             # Update Expense Card
             jeff_expenses = summary['expenses'].get('Jeff', 0)
             vanessa_expenses = summary['expenses'].get('Vanessa', 0)
             total_expenses = jeff_expenses + vanessa_expenses
             
-            self.labels["💳 Expenses_Jeff's Expenses:"].setText(f"${jeff_expenses:,.2f}")
-            self.labels["💳 Expenses_Vanessa's Expenses:"].setText(f"${vanessa_expenses:,.2f}")
-            self.labels["💳 Expenses_Total Expenses:"].setText(f"${total_expenses:,.2f}")
-            
+            self._update_label("💳 Expenses", "Jeff's Expenses:", f"${jeff_expenses:,.2f}")
+            self._update_label("💳 Expenses", "Vanessa's Expenses:", f"${vanessa_expenses:,.2f}")
+            self._update_label("💳 Expenses", "Total Expenses:", f"${total_expenses:,.2f}")
+
             # Update Net Results Card
             net_income = total_income - total_expenses
             savings_rate = (net_income / total_income * 100) if total_income > 0 else 0
             
-            self.labels["📊 Net Results_Net Income:"].setText(f"${net_income:,.2f}")
-            self.labels["📊 Net Results_Savings Rate:"].setText(f"{savings_rate:.1f}%")
-            self.labels["📊 Net Results_Available for Savings:"].setText(f"${net_income:,.2f}")
-            
+            self._update_label("📊 Net Results", "Net Income:", f"${net_income:,.2f}")
+            self._update_label("📊 Net Results", "Savings Rate:", f"{savings_rate:.1f}%")
+            self._update_label("📊 Net Results", "Available for Savings:", f"${net_income:,.2f}")
+
             # Update Top Categories
             top_categories = sorted(summary['by_category'], key=lambda x: x['total'], reverse=True)[:5]
             for i in range(5):
-                label_key = f"🏷️ Top Categories_{i+1}."
+                label_key = f"{i+1}."
                 if i < len(top_categories):
                     cat = top_categories[i]
-                    self.labels[label_key].setText(f"{cat['category']}: ${cat['total']:,.2f}")
+                    self._update_label("🏷️ Top Categories", label_key, f"{cat['category']}: ${cat['total']:,.2f}")
                 else:
-                    self.labels[label_key].setText("")
-            
+                    self._update_label("🏷️ Top Categories", label_key, "")
+
             # Update Quick Stats
             from calendar import monthrange
             days_in_month = monthrange(year, month)[1]
@@ -215,10 +215,20 @@ class OverviewTab(QWidget):
             projected = daily_avg * days_in_month
             days_remaining = max(0, days_in_month - current_day)
             
-            self.labels["📈 Quick Stats_Days in Month:"].setText(str(days_in_month))
-            self.labels["📈 Quick Stats_Daily Average:"].setText(f"${daily_avg:,.2f}")
-            self.labels["📈 Quick Stats_Projected Monthly:"].setText(f"${projected:,.2f}")
-            self.labels["📈 Quick Stats_Days Remaining:"].setText(str(days_remaining))
-            
+            self._update_label("📈 Quick Stats", "Days in Month:", str(days_in_month))
+            self._update_label("📈 Quick Stats", "Daily Average:", f"${daily_avg:,.2f}")
+            self._update_label("📈 Quick Stats", "Projected Monthly:", f"${projected:,.2f}")
+            self._update_label("📈 Quick Stats", "Days Remaining:", str(days_remaining))
+
         except Exception as e:
             print(f"Error refreshing overview data: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _update_label(self, card_title, label_text, value):
+        """Safely update a label value"""
+        key = f"{card_title}_{label_text}"
+        if key in self.labels:
+            self.labels[key].setText(value)
+        else:
+            print(f"Warning: Label key '{key}' not found")

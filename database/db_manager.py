@@ -7,42 +7,94 @@ import os
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 import json
+import threading
 
 class DatabaseManager:
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls, db_path: str = "budget_tracker.db"):
+        """Singleton pattern to ensure only one database connection"""
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(DatabaseManager, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self, db_path: str = "budget_tracker.db"):
         """Initialize database connection"""
-        self.db_path = db_path
-        self.conn = None
-        self.cursor = None
-        
+        if not hasattr(self, 'initialized'):
+            self.db_path = db_path
+            self.conn = None
+            self.cursor = None
+            self.initialized = True
+
     def connect(self):
-        """Establish database connection"""
-        self.conn = sqlite3.connect(self.db_path)
-        self.conn.row_factory = sqlite3.Row
-        self.cursor = self.conn.cursor()
-        
+        """Establish database connection with proper settings"""
+        if self.conn is None:
+            self.conn = sqlite3.connect(
+                self.db_path,
+                timeout=30.0,  # 30 second timeout
+                check_same_thread=False
+            )
+            self.conn.row_factory = sqlite3.Row
+            # Enable WAL mode for better concurrency
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            # Set busy timeout
+            self.conn.execute("PRAGMA busy_timeout=30000")
+            self.cursor = self.conn.cursor()
+
     def disconnect(self):
         """Close database connection"""
         if self.conn:
-            self.conn.close()
-            
+            try:
+                self.conn.close()
+            except:
+                pass
+            finally:
+                self.conn = None
+                self.cursor = None
+
     def execute(self, query, params=None):
-        """Execute a SQL query and return cursor (for compatibility)"""
-        # Always ensure we have a fresh connection
+        """Execute a SQL query and return cursor"""
+        # Ensure we have a connection
         self.connect()
         
-        if params:
-            result = self.cursor.execute(query, params)
-        else:
-            result = self.cursor.execute(query)
-            
-        return result
-        
+        try:
+            if params:
+                result = self.cursor.execute(query, params)
+            else:
+                result = self.cursor.execute(query)
+            return result
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                # Retry once after a brief pause
+                import time
+                time.sleep(0.1)
+                if params:
+                    result = self.cursor.execute(query, params)
+                else:
+                    result = self.cursor.execute(query)
+                return result
+            else:
+                raise
+
     def commit(self):
         """Commit current transaction"""
         if self.conn:
             self.conn.commit()
             
+    def __enter__(self):
+        """Context manager entry"""
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        if exc_type is None:
+            self.commit()
+        # Don't disconnect here to maintain singleton connection
+
     def initialize_database(self):
         """Create all necessary tables"""
         self.connect()
@@ -84,7 +136,7 @@ class DatabaseManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        
+
         # Add realized column to existing expenses table if it doesn't exist
         try:
             self.cursor.execute('ALTER TABLE expenses ADD COLUMN realized BOOLEAN DEFAULT 0')
@@ -106,7 +158,7 @@ class DatabaseManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        
+
         # Savings goals table
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS savings_goals (
@@ -120,7 +172,7 @@ class DatabaseManager:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        
+
         # Savings allocations table
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS savings_allocations (
@@ -565,3 +617,4 @@ class DatabaseManager:
         results = [dict(row) for row in self.cursor.fetchall()]
         self.disconnect()
         return results
+

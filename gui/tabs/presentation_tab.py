@@ -9,6 +9,7 @@ from PyQt6.QtGui import *
 from PyQt6.QtCharts import *
 
 from database.models import IncomeModel, ExpenseModel
+from database.category_manager import get_category_manager
 
 class PresentationTab(QWidget):
     """Monthly presentation tab with subtabs"""
@@ -16,6 +17,7 @@ class PresentationTab(QWidget):
     def __init__(self, db):
         super().__init__()
         self.db = db
+        self.category_manager = get_category_manager()
         self.setup_ui()
         self.refresh_data()
         
@@ -61,7 +63,7 @@ class PresentationTab(QWidget):
 
         # Summary section
         summary_layout = QHBoxLayout()
-        
+
         # Income summary
         income_group = QGroupBox("Income Summary")
         income_layout = QVBoxLayout()
@@ -74,7 +76,7 @@ class PresentationTab(QWidget):
         income_layout.addWidget(self.total_income_label)
         income_group.setLayout(income_layout)
         summary_layout.addWidget(income_group)
-        
+
         # Expense summary
         expense_group = QGroupBox("Expense Summary")
         expense_layout = QVBoxLayout()
@@ -168,11 +170,11 @@ class PresentationTab(QWidget):
         jeff_income = income_by_person.get('Jeff', 0)
         vanessa_income = income_by_person.get('Vanessa', 0)
         total_income = jeff_income + vanessa_income
-        
+
         self.jeff_income_label.setText(f"Jeff: ${jeff_income:,.2f}")
         self.vanessa_income_label.setText(f"Vanessa: ${vanessa_income:,.2f}")
         self.total_income_label.setText(f"Total: ${total_income:,.2f}")
-        
+
         # Get expenses by person
         cursor = self.db.execute('''
             SELECT person, COALESCE(SUM(amount), 0) as total
@@ -185,21 +187,21 @@ class PresentationTab(QWidget):
         jeff_expenses = expenses_by_person.get('Jeff', 0)
         vanessa_expenses = expenses_by_person.get('Vanessa', 0)
         total_expenses = jeff_expenses + vanessa_expenses
-        
+
         self.jeff_expense_label.setText(f"Jeff: ${jeff_expenses:,.2f}")
         self.vanessa_expense_label.setText(f"Vanessa: ${vanessa_expenses:,.2f}")
         self.total_expense_label.setText(f"Total: ${total_expenses:,.2f}")
-        
+
         # Update category table
         categories = ExpenseModel.get_by_category(self.db, month_start, month_end)
-        
+
         self.category_table.setRowCount(len(categories))
         for i, cat in enumerate(categories):
             self.category_table.setItem(i, 0, QTableWidgetItem(cat['category']))
             self.category_table.setItem(i, 1, QTableWidgetItem(cat['subcategory'] or ""))
             self.category_table.setItem(i, 2, QTableWidgetItem("$0.00"))  # Budgeted placeholder
             self.category_table.setItem(i, 3, QTableWidgetItem(f"${cat['total']:.2f}"))
-            
+
             variance = 0 - cat['total']  # Since no budget set
             variance_item = QTableWidgetItem(f"${variance:.2f}")
             if variance < 0:
@@ -207,10 +209,10 @@ class PresentationTab(QWidget):
             else:
                 variance_item.setForeground(QColor(76, 175, 80))
             self.category_table.setItem(i, 4, variance_item)
-        
+
         # Update chart
         self.update_spending_chart(month_start, month_end)
-        
+
     def refresh_unrealized_data(self):
         """Refresh data for the unrealized expenses tab"""
         # Get selected month range

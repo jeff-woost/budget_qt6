@@ -15,14 +15,16 @@ from datetime import datetime
 import csv
 import os
 from database.db_manager import DatabaseManager
+from database.category_manager import get_category_manager
 from gui.utils.expense_loader import ExpenseLoader
 
 class BudgetTab(QWidget):
     def __init__(self):
         super().__init__()
         self.db = DatabaseManager()
+        self.category_manager = get_category_manager()
         self.init_ui()
-        
+
     def init_ui(self):
         """Initialize the UI with Income and Expenses sub-tabs"""
         layout = QVBoxLayout()
@@ -367,11 +369,12 @@ class ExpensesSubTab(QWidget):
     def __init__(self):
         super().__init__()
         self.db = DatabaseManager()
-        self.categories_data = {}
+        self.category_manager = get_category_manager()
+        self.categories_data = self.category_manager.get_categories()
         self.init_ui()
-        self.load_categories()
+        self.load_categories()  # Add this line to populate category dropdowns
         self.refresh_data()
-        
+
     def init_ui(self):
         """Initialize the Expenses UI"""
         layout = QVBoxLayout()
@@ -425,7 +428,7 @@ class ExpensesSubTab(QWidget):
 
         # Row 4 - Buttons
         button_layout = QHBoxLayout()
-        
+
         add_btn = QPushButton("Add Expense")
         add_btn.setStyleSheet("""
             QPushButton {
@@ -585,20 +588,11 @@ class ExpensesSubTab(QWidget):
         return group
         
     def load_categories(self):
-        """Load categories from database"""
+        """Load categories from the centralized category manager"""
         try:
-            categories = self.db.get_categories()
-            
-            # Organize categories
-            self.categories_data = {}
-            for cat in categories:
-                category = cat['category']
-                subcategory = cat['subcategory']
-                
-                if category not in self.categories_data:
-                    self.categories_data[category] = []
-                self.categories_data[category].append(subcategory)
-            
+            # Get categories from centralized manager
+            self.categories_data = self.category_manager.get_categories()
+
             # Populate category combo
             self.category_combo.clear()
             self.category_combo.addItems(sorted(self.categories_data.keys()))
@@ -642,7 +636,7 @@ class ExpensesSubTab(QWidget):
             except ValueError:
                 QMessageBox.warning(self, "Warning", "Please enter a valid number for amount")
                 return
-            
+
             # Add to database using the updated ExpenseModel.add method
             from database.models import ExpenseModel
             ExpenseModel.add(self.db, date, person, amount, category, subcategory,
@@ -734,7 +728,7 @@ class ExpensesSubTab(QWidget):
                     self.refresh_data()
 
                     QMessageBox.information(
-                        self, 
+                        self,
                         "Success", 
                         f"Successfully imported {len(final_expenses)} expenses!\n\n"
                         f"Parsing errors: {len(errors)}\n"

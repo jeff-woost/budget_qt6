@@ -140,7 +140,7 @@ class ExpenseModel:
 
 class NetWorthModel:
     """Model for net worth operations"""
-    
+
     @staticmethod
     def add_or_update(db, asset_type, asset_name, value, person):
         """Add or update asset"""
@@ -149,7 +149,7 @@ class NetWorthModel:
             SELECT id FROM net_worth
             WHERE asset_name = ? AND date = date('now')
         ''', (asset_name,)).fetchone()
-        
+
         if existing:
             db.execute('''
                 UPDATE net_worth
@@ -162,7 +162,7 @@ class NetWorthModel:
                 VALUES (date('now'), ?, ?, ?, ?)
             ''', (asset_type, asset_name, value, person))
         db.commit()
-        
+
     @staticmethod
     def get_current(db):
         """Get current assets"""
@@ -171,7 +171,7 @@ class NetWorthModel:
             WHERE date = (SELECT MAX(date) FROM net_worth)
             ORDER BY value DESC
         ''').fetchall()
-        
+
     @staticmethod
     def get_total(db):
         """Get total net worth"""
@@ -181,7 +181,7 @@ class NetWorthModel:
             WHERE date = (SELECT MAX(date) FROM net_worth)
         ''').fetchone()
         return result['total'] if result else 0
-        
+
     @staticmethod
     def delete(db, asset_name):
         """Delete asset"""
@@ -190,7 +190,7 @@ class NetWorthModel:
 
 class SavingsGoalModel:
     """Model for savings goal operations"""
-    
+
     @staticmethod
     def add(db, goal_name, target_amount, target_date, priority):
         """Add savings goal"""
@@ -199,7 +199,7 @@ class SavingsGoalModel:
             VALUES (?, ?, ?, ?)
         ''', (goal_name, target_amount, target_date, priority))
         db.commit()
-        
+
     @staticmethod
     def get_all(db):
         """Get all savings goals"""
@@ -207,7 +207,7 @@ class SavingsGoalModel:
             SELECT * FROM savings_goals
             ORDER BY priority
         ''').fetchall()
-        
+
     @staticmethod
     def update_amount(db, goal_id, amount):
         """Update goal current amount"""
@@ -217,7 +217,7 @@ class SavingsGoalModel:
             WHERE id = ?
         ''', (amount, goal_id))
         db.commit()
-        
+
     @staticmethod
     def delete(db, goal_id):
         """Delete savings goal"""

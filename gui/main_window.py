@@ -15,6 +15,7 @@ from gui.tabs.budget_tab import BudgetTab
 from gui.tabs.presentation_tab import PresentationTab
 from gui.tabs.savings_tab import SavingsTab
 from gui.tabs.trends_tab import TrendsTab
+from gui.utils.styles import get_app_stylesheet
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -57,29 +58,9 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
         
-        # Apply stylesheet for professional look
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #2b2b2b;
-            }
-            QTabWidget::pane {
-                border: 1px solid #444;
-                background-color: #2b2b2b;
-            }
-            QTabBar::tab {
-                background-color: #3c3c3c;
-                color: white;
-                padding: 10px 15px;
-                margin-right: 2px;
-            }
-            QTabBar::tab:selected {
-                background-color: #2a82da;
-            }
-            QTabBar::tab:hover {
-                background-color: #4c4c4c;
-            }
-        """)
-        
+        # Apply the proper light theme stylesheet
+        self.setStyleSheet(get_app_stylesheet())
+
     def create_menu_bar(self):
         """Create the application menu bar"""
         menubar = self.menuBar()

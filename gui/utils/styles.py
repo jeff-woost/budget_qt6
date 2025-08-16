@@ -71,7 +71,7 @@ def get_app_stylesheet():
         font-size: 15px;
     }
     
-    /* Table Styling - Thicker Frames */
+    /* Table Styling - Thicker Frames and FIXED TEXT VISIBILITY */
     QTableWidget {
         background-color: #fffef8;  /* Warm white */
         alternate-background-color: #f8f6f0;  /* Warm alternating rows */
@@ -81,6 +81,25 @@ def get_app_stylesheet():
         border-radius: 8px;
         gridline-color: #e8e2d4;  /* Warm gridlines */
         font-size: 13px;
+        color: #2d3748;  /* EXPLICIT TEXT COLOR FOR VISIBILITY */
+    }
+    
+    /* Table Items - CRITICAL FOR TEXT VISIBILITY */
+    QTableWidget::item {
+        color: #2d3748;  /* Dark text for visibility */
+        background-color: transparent;
+        padding: 8px;
+        border: none;
+    }
+    
+    QTableWidget::item:selected {
+        background-color: #e6f3ff;  /* Light blue selection */
+        color: #1e3a8a;  /* Dark blue text when selected */
+    }
+    
+    QTableWidget::item:hover {
+        background-color: #f0f4f8;  /* Light hover effect */
+        color: #2d3748;
     }
     
     QHeaderView::section {
@@ -130,7 +149,7 @@ def get_app_stylesheet():
         color: #ffffff;
     }
     
-    /* Form Elements - Thicker Borders */
+    /* Form Elements - Thicker Borders and FIXED TEXT VISIBILITY */
     QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit {
         padding: 10px 14px;  /* Increased padding */
         border: 3px solid #d4c5b9;  /* Thicker warm border */
@@ -138,7 +157,7 @@ def get_app_stylesheet():
         background-color: #fffef8;
         font-size: 13px;
         min-height: 24px;
-        color: #2d3748;
+        color: #2d3748;  /* EXPLICIT TEXT COLOR FOR VISIBILITY */
     }
     
     QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QDateEdit:focus {
@@ -147,22 +166,98 @@ def get_app_stylesheet():
         box-shadow: 0 0 0 3px rgba(44, 85, 48, 0.15);
     }
     
+    /* ComboBox Dropdown Styling */
+    QComboBox {
+        color: #2d3748;  /* Explicit text color */
+    }
+    
     QComboBox::drop-down {
         border: none;
         width: 24px;
+        background-color: #2c5530;
+        border-top-right-radius: 5px;
+        border-bottom-right-radius: 5px;
     }
     
     QComboBox::down-arrow {
+        image: none;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 5px solid #ffffff;
+        width: 0;
+        height: 0;
+    }
+    
+    QComboBox QAbstractItemView {
+        background-color: #fffef8;
+        color: #2d3748;  /* Dropdown item text color */
+        selection-background-color: #e6f3ff;
+        selection-color: #1e3a8a;
         border: 2px solid #2c5530;
-        width: 10px;
-        height: 10px;
-        background-color: #2c5530;
+        border-radius: 4px;
+    }
+    
+    QComboBox QAbstractItemView::item {
+        color: #2d3748;  /* Dropdown item text color */
+        padding: 8px;
+        min-height: 20px;
+    }
+    
+    QComboBox QAbstractItemView::item:hover {
+        background-color: #f0f4f8;
+        color: #2d3748;
+    }
+    
+    QComboBox QAbstractItemView::item:selected {
+        background-color: #e6f3ff;
+        color: #1e3a8a;
     }
     
     /* Enhanced Labels - Warmer Colors */
     QLabel {
         color: #4a5568;  /* Warmer gray text */
         font-size: 13px;
+    }
+    
+    /* Text Edit Fields */
+    QTextEdit {
+        background-color: #fffef8;
+        color: #2d3748;  /* EXPLICIT TEXT COLOR */
+        border: 3px solid #d4c5b9;
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 13px;
+    }
+    
+    QTextEdit:focus {
+        border-color: #2c5530;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(44, 85, 48, 0.15);
+    }
+    
+    /* Checkbox Styling */
+    QCheckBox {
+        color: #2d3748;  /* Text color for checkbox labels */
+        font-size: 13px;
+        spacing: 8px;
+    }
+    
+    QCheckBox::indicator {
+        width: 18px;
+        height: 18px;
+        border: 2px solid #d4c5b9;
+        border-radius: 3px;
+        background-color: #fffef8;
+    }
+    
+    QCheckBox::indicator:hover {
+        border-color: #2c5530;
+    }
+    
+    QCheckBox::indicator:checked {
+        background-color: #2c5530;
+        border-color: #2c5530;
+        image: url(data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M10.28 2.28L4.5 8.06 1.72 5.28l.56-.56L4.5 6.94l5.22-5.22z'/%3E%3C/svg%3E);
     }
     
     /* Professional Frames/Separators - Much Thicker */
@@ -273,42 +368,9 @@ def get_app_stylesheet():
         background-color: #38663d;
     }
     
-    /* Menu Styling - Updated Colors */
-    QMenuBar {
-        background-color: #2c5530;  /* Dark green menu bar */
-        color: #ffffff;
-        border-bottom: 3px solid #1e3d24;  /* Thicker border */
-        font-weight: 600;
-        padding: 4px;
-    }
-    
-    QMenuBar::item {
-        padding: 10px 15px;  /* Increased padding */
-        background-color: transparent;
-        border-radius: 6px;
-    }
-    
-    QMenuBar::item:selected {
-        background-color: #38663d;
-        border-radius: 6px;
-    }
-    
-    QMenu {
-        background-color: #fffef8;
-        border: 3px solid #2c5530;  /* Thicker menu border */
-        border-radius: 8px;
-        padding: 6px;
-    }
-    
-    QMenu::item {
-        padding: 10px 15px;
-        border-radius: 6px;
-        color: #2d3748;
-    }
-    
-    QMenu::item:selected {
-        background-color: #f7f1e8;
-        color: #2c5530;
+    QScrollBar::add-line, QScrollBar::sub-line {
+        border: none;
+        background: none;
     }
     """
 

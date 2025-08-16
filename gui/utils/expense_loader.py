@@ -8,15 +8,17 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 import re
+from database.category_manager import get_category_manager
 
 class ExpenseLoader:
     """Utility class for loading expenses from various file formats"""
 
     def __init__(self):
-        # Load categories from CSV file
-        self.categories_data = self._load_categories_from_csv()
+        # Use centralized category manager
+        self.category_manager = get_category_manager()
+        self.categories_data = self.category_manager.get_categories()
 
-        # Updated category mappings using correct categories from CSV
+        # Enhanced category mappings using correct categories from CSV
         self.category_mappings = {
             'WALGREENS': ('Healthcare', 'Prescriptions'),
             'CVS': ('Healthcare', 'Prescriptions'),
@@ -24,6 +26,7 @@ class ExpenseLoader:
             'PHARMACY': ('Healthcare', 'Prescriptions'),
             'APPLE.COM': ('Other', 'Entertainment'),
             'AMAZON': ('Other', 'Other'),
+            'TARGET': ('Other', 'Target AutoPay'),
             'EBAY': ('Other', 'Other'),
             'WHOLEFDS': ('Food', 'Food (Groceries)'),
             'WHOLE FOODS': ('Food', 'Food (Groceries)'),
@@ -32,8 +35,7 @@ class ExpenseLoader:
             'TRADER JOE': ('Food', 'Food (Groceries)'),
             'SHOPRITE': ('Food', 'Food (Groceries)'),
             'STOP & SHOP': ('Food', 'Food (Groceries)'),
-            'TARGET': ('Other', 'Other'),
-            'WALMART': ('Other', 'Other'),
+            'WALMART': ('Food', 'Food (Groceries)'),
             'COSTCO': ('Food', 'Food (Groceries)'),
             'MCDONALDS': ('Food', 'Food (Take Out)'),
             'BURGER KING': ('Food', 'Food (Take Out)'),
@@ -60,59 +62,20 @@ class ExpenseLoader:
             'HOME DEPOT': ('Home', 'Tools / Hardware'),
             'LOWES': ('Home', 'Tools / Hardware'),
             'BED BATH': ('Home', 'Homeware'),
-            'IKEA': ('Home', 'Home D�cor'),
+            'IKEA': ('Home', 'Home Décor'),
             'MARSHALLS': ('Other', 'Clothes'),
             'TJ MAXX': ('Other', 'Clothes'),
             'KOHLS': ('Other', 'Clothes'),
             'MACYS': ('Other', 'Clothes'),
+            'OPTIMUM': ('Utilities', 'Optimum'),
+            'PSEG': ('Utilities', 'PSEG'),
+            'VERIZON': ('Utilities', 'Cell Phone'),
+            'T-MOBILE': ('Utilities', 'Cell Phone'),
+            'ATT': ('Utilities', 'Cell Phone'),
+            'GEICO': ('Utilities', 'Car Insurance'),
+            'STATE FARM': ('Utilities', 'Car Insurance'),
+            'ALLSTATE': ('Utilities', 'Car Insurance'),
         }
-
-    def _load_categories_from_csv(self) -> Dict[str, List[str]]:
-        """Load categories from the categories.csv file"""
-        categories_data = {}
-
-        # Try to find categories.csv in common locations
-        possible_paths = [
-            '/Users/jeffreywooster/Documents/Development/6_Budget_Master/categories.csv',
-            os.path.join(os.path.dirname(__file__), '..', '..', 'categories.csv'),
-            os.path.join(os.path.dirname(__file__), '..', '..', '..', 'categories.csv'),
-            'categories.csv'
-        ]
-
-        categories_file = None
-        for path in possible_paths:
-            if os.path.exists(path):
-                categories_file = path
-                break
-
-        if categories_file:
-            try:
-                with open(categories_file, 'r', encoding='utf-8') as file:
-                    reader = csv.DictReader(file)
-                    for row in reader:
-                        category = row.get('Category', '').strip()
-                        subcategory = row.get('Sub Category', '').strip()
-
-                        if category and subcategory:
-                            if category not in categories_data:
-                                categories_data[category] = []
-                            if subcategory not in categories_data[category]:
-                                categories_data[category].append(subcategory)
-            except Exception as e:
-                print(f"Error loading categories from CSV: {e}")
-
-        # If no categories loaded, use default fallback
-        if not categories_data:
-            categories_data = {
-                'Housing': ['Mortgage', 'HOA', 'Property Taxes', 'Reserves'],
-                'Utilities': ['Electric', 'Gas', 'Internet', 'Phone', 'Insurance'],
-                'Food': ['Food (Groceries)', 'Food (Take Out)', 'Food (Dining Out)'],
-                'Healthcare': ['Prescriptions', 'Doctor Visits', 'Co-Pay'],
-                'Vehicles': ['Gas', 'Insurance', 'Repairs', 'Parking'],
-                'Other': ['Entertainment', 'Clothes', 'Other']
-            }
-
-        return categories_data
 
     def load_csv_file(self, file_path: str) -> Tuple[List[Dict], List[str]]:
         """
@@ -288,50 +251,57 @@ class ExpenseLoader:
         Map merchant/description to budget categories
         Returns: (category, subcategory)
         """
+        # Refresh categories data to get latest
+        self.categories_data = self.category_manager.get_categories()
+
         description_upper = description.upper()
 
         # Check our mapping dictionary first
         for key, (category, subcategory) in self.category_mappings.items():
             if key in description_upper:
                 # Validate that the category exists in our loaded categories
-                if category in self.categories_data and subcategory in self.categories_data[category]:
+                if self.category_manager.subcategory_exists(category, subcategory):
                     return category, subcategory
 
         # Enhanced fallback mappings based on keywords using actual categories from CSV
         if any(keyword in description_upper for keyword in ['GROCERY', 'SUPERMARKET', 'MARKET', 'FOODS']):
-            if 'Food' in self.categories_data and 'Food (Groceries)' in self.categories_data['Food']:
+            if self.category_manager.subcategory_exists('Food', 'Food (Groceries)'):
                 return 'Food', 'Food (Groceries)'
 
         elif any(keyword in description_upper for keyword in ['RESTAURANT', 'CAFE', 'PIZZA', 'DELI', 'DINING']):
-            if 'Food' in self.categories_data and 'Food (Dining Out)' in self.categories_data['Food']:
+            if self.category_manager.subcategory_exists('Food', 'Food (Dining Out)'):
                 return 'Food', 'Food (Dining Out)'
 
         elif any(keyword in description_upper for keyword in ['TAKEOUT', 'TAKE OUT', 'DELIVERY', 'UBER EATS', 'DOORDASH']):
-            if 'Food' in self.categories_data and 'Food (Take Out)' in self.categories_data['Food']:
+            if self.category_manager.subcategory_exists('Food', 'Food (Take Out)'):
                 return 'Food', 'Food (Take Out)'
 
         elif any(keyword in description_upper for keyword in ['GAS', 'FUEL', 'EXXON', 'SHELL', 'BP', 'MOBIL', 'CHEVRON']):
-            if 'Vehicles' in self.categories_data and 'Gas' in self.categories_data['Vehicles']:
+            if self.category_manager.subcategory_exists('Vehicles', 'Gas'):
                 return 'Vehicles', 'Gas'
 
         elif any(keyword in description_upper for keyword in ['PHARMACY', 'DRUG', 'WALGREENS', 'CVS', 'RITE AID']):
-            if 'Healthcare' in self.categories_data and 'Prescriptions' in self.categories_data['Healthcare']:
+            if self.category_manager.subcategory_exists('Healthcare', 'Prescriptions'):
                 return 'Healthcare', 'Prescriptions'
 
         elif any(keyword in description_upper for keyword in ['MEDICAL', 'DOCTOR', 'HOSPITAL', 'CLINIC']):
-            if 'Healthcare' in self.categories_data and 'Other Doctor Visits' in self.categories_data['Healthcare']:
+            if self.category_manager.subcategory_exists('Healthcare', 'Other Doctor Visits'):
                 return 'Healthcare', 'Other Doctor Visits'
 
         elif any(keyword in description_upper for keyword in ['PARKING', 'TOLL']):
-            if 'Vehicles' in self.categories_data and 'Parking' in self.categories_data['Vehicles']:
+            if self.category_manager.subcategory_exists('Vehicles', 'Parking'):
                 return 'Vehicles', 'Parking'
+            elif self.category_manager.subcategory_exists('Vehicles', 'Tolls'):
+                return 'Vehicles', 'Tolls'
 
         elif any(keyword in description_upper for keyword in ['INSURANCE']):
-            if 'Utilities' in self.categories_data and 'Insurance' in self.categories_data['Utilities']:
+            if self.category_manager.subcategory_exists('Utilities', 'Car Insurance'):
+                return 'Utilities', 'Car Insurance'
+            elif self.category_manager.subcategory_exists('Utilities', 'Insurance'):
                 return 'Utilities', 'Insurance'
 
         elif any(keyword in description_upper for keyword in ['UBER', 'LYFT', 'TAXI', 'TRANSIT']):
-            if 'Utilities' in self.categories_data and 'Taxi / Transit' in self.categories_data['Utilities']:
+            if self.category_manager.subcategory_exists('Utilities', 'Taxi / Transit'):
                 return 'Utilities', 'Taxi / Transit'
 
         # Use original category if available and mappable to our categories
@@ -352,20 +322,22 @@ class ExpenseLoader:
             if original_category in category_mapping:
                 category, subcategory = category_mapping[original_category]
                 # Validate that the mapped category exists in our loaded categories
-                if category in self.categories_data and subcategory in self.categories_data[category]:
+                if self.category_manager.subcategory_exists(category, subcategory):
                     return category, subcategory
 
         # Default fallback - ensure 'Other' category exists
-        if 'Other' in self.categories_data:
-            if 'Other' in self.categories_data['Other']:
-                return 'Other', 'Other'
-            elif self.categories_data['Other']:  # If Other category exists but not 'Other' subcategory
-                return 'Other', self.categories_data['Other'][0]
+        if self.category_manager.subcategory_exists('Other', 'Other'):
+            return 'Other', 'Other'
+        elif self.category_manager.category_exists('Other'):
+            subcategories = self.category_manager.get_subcategories('Other')
+            if subcategories:
+                return 'Other', subcategories[0]
 
         # Ultimate fallback - use first available category and subcategory
-        if self.categories_data:
-            first_category = list(self.categories_data.keys())[0]
-            first_subcategory = self.categories_data[first_category][0] if self.categories_data[first_category] else 'Other'
+        categories = self.category_manager.get_categories()
+        if categories:
+            first_category = list(categories.keys())[0]
+            first_subcategory = categories[first_category][0] if categories[first_category] else 'Other'
             return first_category, first_subcategory
 
         # If no categories loaded at all, return basic fallback
@@ -410,7 +382,7 @@ class ExpenseLoader:
 
     def get_available_categories(self) -> Dict[str, List[str]]:
         """Get the loaded categories data for use by other components"""
-        return self.categories_data.copy()
+        return self.category_manager.get_categories()
 
     def _parse_date(self, date_str: str) -> datetime:
         """
